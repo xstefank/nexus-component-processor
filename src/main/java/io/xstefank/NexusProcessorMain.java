@@ -1,8 +1,13 @@
 package io.xstefank;
 
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import io.xstefank.model.json.Components;
+import io.xstefank.model.yml.Component;
+import io.xstefank.model.yml.ComponentVersions;
 import org.jboss.logging.Logger;
 import picocli.CommandLine;
 
@@ -14,8 +19,10 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import java.io.File;
+import java.io.IOException;
 import java.net.URI;
-import java.time.Instant;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,13 +49,16 @@ public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication
     @CommandLine.Option(names = {"-c", "--credentials"}, description = "The 'username:password' for the nexus", required = true)
     String credentials;
 
+    @CommandLine.Option(names = {"-o", "--output"}, description = "The output file override")
+    String output;
+
     @Override
     public int run(String... args) throws Exception {
         return new CommandLine(this, factory).execute(args);
     }
 
     @Override
-    public Integer call() {
+    public Integer call() throws IOException {
         logger.tracef("Processing components from %s for the repository %s", nexusUrl, repository);
 
         if (credentials == null) {
@@ -98,13 +108,16 @@ public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication
 
             } while (components.continuationToken != null);
 
-            finalVersions.forEach((k, v) -> {
-                    System.out.println(k);
-                    System.out.println(v);
-                    System.out.println("-----------------");
-                    System.out.println();
-                });
+            ComponentVersions outputComponentVersions = new ComponentVersions();
 
+            finalVersions.forEach((groupId, version) -> {
+                outputComponentVersions.components.add(Component.of(groupId, version));
+            });
+
+            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+            File resultFile = Paths.get(output == null ? "component-versions.yml" : output).toFile();
+            System.out.println("Writing the output to " + resultFile.getCanonicalPath());
+            mapper.writer(new DefaultPrettyPrinter()).writeValue(resultFile, outputComponentVersions);
 
         } finally {
             if (client != null) {
