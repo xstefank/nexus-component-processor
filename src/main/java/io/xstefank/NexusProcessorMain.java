@@ -27,15 +27,12 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @QuarkusMain
 @CommandLine.Command(name = "nexus-component-processor", mixinStandardHelpOptions = true, version = "1.0.0")
 public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication {
 
     private final Logger logger = Logger.getLogger(NexusProcessorMain.class);
-    private final Pattern versionDatePattern = Pattern.compile(".*-(\\d+)-.*$");
 
     @Inject
     CommandLine.IFactory factory;
@@ -51,6 +48,9 @@ public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication
 
     @CommandLine.Option(names = {"-o", "--output"}, description = "The output file override")
     String output;
+
+    @Inject
+    ComponentProcessor componentProcessor;
 
     @Override
     public int run(String... args) throws Exception {
@@ -70,8 +70,6 @@ public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication
         try {
             client = ClientBuilder.newClient();
             Response response;
-
-            final Map<String, String> finalVersions = new HashMap<>();
             Components components = new Components();
 
             do {
@@ -100,19 +98,14 @@ public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication
 
                 components = response.readEntity(Components.class);
 
-                components.items.forEach(item -> {
-                    if (!finalVersions.containsKey(item.group) || compareDates(item.version, finalVersions.get(item.group)) > 0) {
-                        finalVersions.put(item.group, item.version);
-                    }
-                });
+                componentProcessor.process(components.items);
 
             } while (components.continuationToken != null);
 
             ComponentVersions outputComponentVersions = new ComponentVersions();
 
-            finalVersions.forEach((groupId, version) -> {
-                outputComponentVersions.components.add(Component.of(groupId, version));
-            });
+            componentProcessor.getFinalVersions().forEach(
+                (groupId, version) -> outputComponentVersions.components.add(Component.of(groupId, version)));
 
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
             File resultFile = Paths.get(output == null ? "component-versions.yml" : output).toFile();
@@ -126,14 +119,5 @@ public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication
         }
 
         return 0;
-    }
-
-    private int compareDates(String version1, String version2) {
-        Matcher matcher1 = versionDatePattern.matcher(version1);
-        Matcher matcher2 = versionDatePattern.matcher(version2);
-        matcher1.matches();
-        matcher2.matches();
-
-        return Long.valueOf(matcher1.group(1)).compareTo(Long.valueOf(matcher2.group(1)));
     }
 }
