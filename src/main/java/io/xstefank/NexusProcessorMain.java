@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
 public class NexusProcessorMain implements Callable<Integer>, QuarkusApplication {
 
     private final Logger logger = Logger.getLogger(NexusProcessorMain.class);
-    private final Pattern versionDatePattern = Pattern.compile(".*-(\\d+)$");
+    private final Pattern versionDatePattern = Pattern.compile(".*-(\\d+)-.*$");
 
     @Inject
     CommandLine.IFactory factory;
